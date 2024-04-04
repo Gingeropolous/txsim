@@ -174,8 +174,7 @@ def process_transaction(env, node, network, transaction):
         else:  # Fluff Phase
             for neighbor_id in network.neighbors(node):  
                 if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-                    network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transacti>
-
+                    network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
                 env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  # Pass neighbor_id directly
 
 
