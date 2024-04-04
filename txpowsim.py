@@ -44,6 +44,8 @@ def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio
     # Initialize nodes with a starting PoW difficulty
 
     for node in G.nodes():
+        G.nodes[node]['transaction_timestamps'] = {}  # For transaction timestamps from neighbors
+        G.nodes[node]['repackage_probabilities'] = {}  # For repackaging probabilities 
         G.nodes[node]['txPoW_mindiff'] = 5  
         G.nodes[node]['seen_transactions'] = set()  
         if random.random() < user_type_ratio:
@@ -121,6 +123,37 @@ def process_transaction(env, node, network, transaction):
     yield env.timeout(delay) 
     #print(f"Node {node} received transaction from originator {transaction.originator}")
 
+
+
+    sender = transaction.originator  # Identify the neighbor
+
+    # Timestamp Management
+    current_time = env.now
+    network.nodes[node]['transaction_timestamps'].setdefault(sender, []).append(current_time)  
+
+    # Clean up old timestamps
+    time_window = 1.0  # Your desired time window in seconds
+    cutoff_time = current_time - time_window
+    network.nodes[node]['transaction_timestamps'][sender] = [
+        timestamp for timestamp in network.nodes[node]['transaction_timestamps'][sender] 
+        if timestamp >= cutoff_time
+    ]
+
+
+    # Difficulty Adjustment  
+    transaction_rate = calculate_transaction_rate(network.nodes[node]['transaction_timestamps'][sender]) 
+    if transaction_rate > 2:  # Threshold of 2 transactions per second 
+       new_min_diff = calculate_new_min_diff(network.nodes[node]['txPoW_mindiff'])  
+       network.nodes[node]['txPoW_mindiff'] = new_min_diff
+
+    # Repackaging Logic (if needed)
+    if need_to_repackage(transaction, network.nodes[node], sender): 
+        repackage_probability = network.nodes[node]['repackage_probabilities'].get(sender, 1.0) 
+        if random.random() < repackage_probability: 
+            repackage_transaction(transaction)  # You'll need to implement this
+        network.nodes[node]['repackage_probabilities'][sender] = update_repackage_probability(repackage_probability)
+
+
     # Dandelion Propagation Logic 
     if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
          network.nodes[node]['seen_transactions'].add(transaction.tx_hash)
@@ -138,8 +171,47 @@ def process_transaction(env, node, network, transaction):
 
 
 
+
+
 def is_in_stem_phase(transaction, node, network):
     return transaction.hops < transaction.hop_limit  # Use the stored hop limit
+
+
+def calculate_transaction_rate(timestamps):
+    """Calculates the transaction rate in transactions per second based on provided timestamps.
+
+    Args:
+        timestamps: A list of timestamps representing when transactions were received.
+
+    Returns:
+        float: The transaction rate in transactions per second.
+    """
+
+    if len(timestamps) < 2:  # Need at least two timestamps for a meaningful rate
+        return 0.0
+
+    time_window = 1.0  # Consider transactions within the last 1 second
+    cutoff_time = env.now - time_window
+
+    recent_transactions = sum(timestamp >= cutoff_time for timestamp in timestamps)
+    transaction_rate = recent_transactions / time_window 
+
+    return transaction_rate 
+
+def calculate_new_min_diff(current_min_diff):
+  """Calculates a new minimum difficulty based on the current value.
+
+  Args:
+      current_min_diff: The current minimum difficulty requirement.
+
+  Returns:
+      float: The new minimum difficulty requirement.
+  """
+
+  # Increase the difficulty by squaring the current value
+  new_min_diff = current_min_diff * current_min_diff
+
+  return new_min_diff
 
 
 def visualize_network(G):
