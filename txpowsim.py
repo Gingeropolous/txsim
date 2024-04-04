@@ -123,6 +123,7 @@ def process_transaction(env, node, network, transaction):
     yield env.timeout(delay) 
     #print(f"Node {node} received transaction from originator {transaction.originator}")
 
+    network.nodes[node]['repackage_probabilities'][neighbor_id]['last_transaction_time'] = env.now
 
 
     sender = transaction.originator  # Identify the neighbor
@@ -166,14 +167,14 @@ if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
 
         neighbor_id = random.choice(list(network.neighbors(node))) 
         if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-            # ... (Repackaging logic: probability check, repackaging, probability update) ...
+            network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
 
         env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) # Pass neighbor_id directly
 
     else:  # Fluff Phase
         for neighbor_id in network.neighbors(node):  
             if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-                # ... (Repackaging logic: probability check, repackaging, probability update) ...
+            network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transacti>
 
             env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  # Pass neighbor_id directly
 
@@ -249,6 +250,31 @@ def repackage_transaction(transaction, target_difficulty):
 
     transaction.tx_pow = target_difficulty  # Directly assign the new PoW value
 
+
+def update_repackage_probability(current_probability, last_transaction_time=None):
+    """Updates the repackaging probability based on the current value and transaction time.
+
+    Args:
+        current_probability: The current repackaging probability (float between 0.0 and 1.0)
+        last_transaction_time: Timestamp of the last transaction received from this neighbor.
+
+    Returns:
+        float: The updated repackaging probability.
+    """
+
+    time_now = env.now
+    time_since_transaction = time_now - last_transaction_time if last_transaction_time is not None else None
+
+    if time_since_transaction is not None and time_since_transaction > 4 * 60:  # 4 minutes in seconds
+        # Reset probability (increase)
+        if current_probability < 1:
+            return min(current_probability + 0.2, 1.0)  # Increment, cap at 1.0
+        else:
+            return 1.0  # Already at maximum
+
+    else:
+        # Decrease probability
+        return max(current_probability - 0.1, 0.0)  # Decrement, minimum of 0.0 
 
 
 def visualize_network(G):
