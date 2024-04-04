@@ -157,26 +157,26 @@ def process_transaction(env, node, network, transaction):
         network.nodes[node]['repackage_probabilities'][sender] = update_repackage_probability(repackage_probability)
 
 
-# Dandelion Propagation Logic 
-if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
-    network.nodes[node]['seen_transactions'].add(transaction.tx_hash)
+    # Dandelion Propagation Logic 
+    if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
+        network.nodes[node]['seen_transactions'].add(transaction.tx_hash)
 
-    if is_in_stem_phase(transaction, node, network): 
-        transaction.hops += 1 
-        print(f"Node {node} forwarding {transaction.tx_hash} in stem phase (hop={transaction.hops})")
+        if is_in_stem_phase(transaction, node, network): 
+            transaction.hops += 1 
+            print(f"Node {node} forwarding {transaction.tx_hash} in stem phase (hop={transaction.hops})")
 
-        neighbor_id = random.choice(list(network.neighbors(node))) 
-        if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-            network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
-
-        env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) # Pass neighbor_id directly
-
-    else:  # Fluff Phase
-        for neighbor_id in network.neighbors(node):  
+            neighbor_id = random.choice(list(network.neighbors(node))) 
             if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-            network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transacti>
+                network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
 
-            env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  # Pass neighbor_id directly
+            env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) # Pass neighbor_id directly
+
+        else:  # Fluff Phase
+            for neighbor_id in network.neighbors(node):  
+                if need_to_repackage(transaction, network.nodes[node], neighbor_id):
+                    network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transacti>
+
+                env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  # Pass neighbor_id directly
 
 
 
