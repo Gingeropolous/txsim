@@ -214,6 +214,23 @@ def calculate_new_min_diff(current_min_diff):
   return new_min_diff
 
 
+def need_to_repackage(transaction, node_data, neighbor_id):
+    """Determines whether a transaction needs to be repackaged.
+
+    Args:
+        transaction: The transaction object.
+        node_data: The data associated with the processing node (from G.nodes[node]).
+        neighbor_id: The ID of the neighbor the transaction needs to be relayed to.
+
+    Returns:
+        bool: True if repackaging is needed, False otherwise.
+    """
+
+    neighbor_min_diff = node_data['neighbors'][neighbor_id]['txPoW_mindiff']  
+
+    return transaction.tx_pow < neighbor_min_diff 
+
+
 def visualize_network(G):
     """Visualizes the given NetworkX graph."""
     pos = nx.spring_layout(G)  # Use a layout algorithm for positioning nodes
