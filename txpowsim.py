@@ -44,10 +44,12 @@ def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio
     # Initialize nodes with a starting PoW difficulty
 
     for node in G.nodes():
-        G.nodes[node]['transaction_timestamps'] = {}  # For transaction timestamps from neighbors
-        G.nodes[node]['repackage_probabilities'] = {}  # For repackaging probabilities 
-        G.nodes[node]['txPoW_mindiff'] = 5  
+        G.nodes[node]['transaction_timestamps'] = {} 
+        G.nodes[node]['repackage_probabilities'] = {}  # Initialize with probability
+        G.nodes[node]['txPoW_mindiff'] = 5 
         G.nodes[node]['seen_transactions'] = set()  
+        G.nodes[node]['neighbors'] = {} 
+
         if random.random() < user_type_ratio:
             G.nodes[node]['user_type'] = 'spammer'
             # Initialize a list to store dynamically chosen spam targets
@@ -66,9 +68,17 @@ def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio
                 peer = random.choice(potential_peers)
                 G.add_edge(node, peer)
                 potential_peers.remove(peer)
+
+                # Update neighbor dictionaries for both nodes
+                G.nodes[node]['repackage_probabilities'].setdefault(peer, {'probability': 1.0}) # Initialize with probability
+                G.nodes[node]['neighbors'][peer] = {'txPoW_mindiff': G.nodes[peer]['txPoW_mindiff']} 
+
+                G.nodes[peer]['repackage_probabilities'].setdefault(node, {'probability': 1.0}) # Initialize with probability
+                G.nodes[peer]['neighbors'][node] = {'txPoW_mindiff': G.nodes[node]['txPoW_mindiff']} 
+
             else:
                 break
-
+    
     # Assign spam targets to spammer nodes (after network creation)
     for node in G.nodes():
         if G.nodes[node]['user_type'] == 'spammer':
@@ -120,13 +130,16 @@ def generate_transaction(env, node, network):
 
 def process_transaction(env, node, network, transaction):
     delay = random.uniform(0.005, 0.02)  # Simulate processing and transmission time
+#    print(f"Node Data for Node {node}: ", network.nodes[node])
     yield env.timeout(delay) 
-    #print(f"Node {node} received transaction from originator {transaction.originator}")
-
-    network.nodes[node]['repackage_probabilities'][neighbor_id]['last_transaction_time'] = env.now
-
+#    network.nodes[node]['repackage_probabilities'].setdefault(sender, {})  # Initialize  if needed
+    print(f"Node {node} received transaction from originator {transaction.originator}")
 
     sender = transaction.originator  # Identify the neighbor
+    print("Before check:", sender)  # Add this line
+
+    network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now
+    print("After check:", sender)  # Add this line
 
     # Timestamp Management
     current_time = env.now
@@ -140,22 +153,11 @@ def process_transaction(env, node, network, transaction):
         if timestamp >= cutoff_time
     ]
 
-
     # Difficulty Adjustment  
     transaction_rate = calculate_transaction_rate(network.nodes[node]['transaction_timestamps'][sender]) 
     if transaction_rate > 2:  # Threshold of 2 transactions per second 
-       new_min_diff = calculate_new_min_diff(network.nodes[node]['txPoW_mindiff'])  
-       network.nodes[node]['txPoW_mindiff'] = new_min_diff
-
-    # Repackaging Logic (if needed)
-    if need_to_repackage(transaction, network.nodes[node], sender): 
-        repackage_probability = network.nodes[node]['repackage_probabilities'].get(sender, 1.0) 
-        target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
-        repackage_transaction(transaction, target_difficulty) 
-        if random.random() < repackage_probability: 
-            repackage_transaction(transaction)  # You'll need to implement this
-        network.nodes[node]['repackage_probabilities'][sender] = update_repackage_probability(repackage_probability)
-
+        new_min_diff = calculate_new_min_diff(network.nodes[node]['txPoW_mindiff'])  
+        network.nodes[node]['txPoW_mindiff'] = new_min_diff
 
     # Dandelion Propagation Logic 
     if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
@@ -167,15 +169,75 @@ def process_transaction(env, node, network, transaction):
 
             neighbor_id = random.choice(list(network.neighbors(node))) 
             if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-                network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
+                # ... (Repackaging logic: probability check, repackaging, probability update) ...
 
-            env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) # Pass neighbor_id directly
+                # Retrieve probability
+                repackage_probability = network.nodes[node]['repackage_probabilities'][sender]['probability']  
+                # Randomness check 
+                print("Value of repackage_probability:", repackage_probability)
+                print("Type of repackage_probability (before):", type(repackage_probability)) 
+                print("Value of repackage_probability:", repackage_probability)
+                print (f"repackage_probability at line 174, in stem phase: {repackage_probability}")
+                if random.random() < repackage_probability: 
+                    target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
+                    repackage_transaction(transaction, target_difficulty)  
+
+                # Update probability and timestamp (regardless of repackaging)
+
+                #network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now
+                #print("Type of repackage_probability (before):", type(repackage_probability)) 
+                #repackage_probability = update_repackage_probability(
+                #network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0))
+                #print("Type of repackage_probability (after):", type(repackage_probability))  
+
+                last_transaction_time = network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0)
+                repackage_probability = update_repackage_probability(last_transaction_time)
+
+                network.nodes[node]['repackage_probabilities'][sender]['probability'] = repackage_probability # Update the probability
+                network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now # Update timestamp
+
+            # Update timestamp
+
+
+            # The following is for if the transaction doesn't need to be repackaged
+            network.nodes[node]['repackage_probabilities'].setdefault(neighbor_id, {})['last_transaction_time'] = env.now
+
+            env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) 
 
         else:  # Fluff Phase
+            print(f"Node {node} forwarding {transaction.tx_hash} in fluff phase")
             for neighbor_id in network.neighbors(node):  
                 if need_to_repackage(transaction, network.nodes[node], neighbor_id):
-                    network.nodes[node]['repackage_probabilities'][neighbor_id] = update_repackage_probability(current_probability, network.nodes[node]['repackage_probabilities'][neighbor_id].get('last_transaction_time'))
-                env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  # Pass neighbor_id directly
+                    # ... (Repackaging logic: probability check, repackaging, probability update) ...
+
+                    # Retrieve probability
+                    repackage_probability = network.nodes[node]['repackage_probabilities'][sender]['probability']  
+                    # Randomness check 
+                    print (f"repackage_probability at line 201, in fluff: {repackage_probability}")
+ 
+                    if random.random() < repackage_probability: 
+                        target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
+                        repackage_transaction(transaction, target_difficulty)  
+
+                    # Update probability and timestamp (regardless of repackaging)
+                    #network.nodes[node]['repackage_probabilities'].setdefault(neighbor, {})['last_transaction_time'] = env.now
+                    #repackage_probability = update_repackage_probability(
+                    #network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0))
+
+
+                    last_transaction_time = network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0)
+                    repackage_probability = update_repackage_probability(last_transaction_time)
+
+                    network.nodes[node]['repackage_probabilities'][sender]['probability'] = repackage_probability # Update the probability
+                    network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now # Update timestamp
+
+
+                # Update timestamp for the current neighbor
+                    network.nodes[node]['repackage_probabilities'].setdefault(neighbor_id, {})['last_transaction_time'] = env.now
+
+                    env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  
+
+
 
 
 
@@ -250,30 +312,29 @@ def repackage_transaction(transaction, target_difficulty):
     transaction.tx_pow = target_difficulty  # Directly assign the new PoW value
 
 
-def update_repackage_probability(current_probability, last_transaction_time=None):
-    """Updates the repackaging probability based on the current value and transaction time.
+def update_repackage_probability(last_transaction_time=None):
+  """
+  Updates the repackaging probability based on the time since the last transaction,
+  incorporating decay over time.
 
-    Args:
-        current_probability: The current repackaging probability (float between 0.0 and 1.0)
-        last_transaction_time: Timestamp of the last transaction received from this neighbor.
+  Args:
+      last_transaction_time: Timestamp of the last transaction received from this neighbor.
 
-    Returns:
-        float: The updated repackaging probability.
-    """
+  Returns:
+      float: The updated repackaging probability (between 0.0 and 1.0).
+  """
 
-    time_now = env.now
-    time_since_transaction = time_now - last_transaction_time if last_transaction_time is not None else None
+  time_now = env.now
+  time_since_transaction = time_now - last_transaction_time if last_transaction_time is not None else None
 
-    if time_since_transaction is not None and time_since_transaction > 4 * 60:  # 4 minutes in seconds
-        # Reset probability (increase)
-        if current_probability < 1:
-            return min(current_probability + 0.2, 1.0)  # Increment, cap at 1.0
-        else:
-            return 1.0  # Already at maximum
+  if time_since_transaction is not None and time_since_transaction > 4 * 60:  # 4 minutes in seconds
+      # Reset probability (increase)
+      return 1.0  # Maximum repackaging probability
+  else:
+      # Decrease probability over time (decay)
+      current_probability = 0.0  # Start with low probability 
+      return max(current_probability - 0.1, 0.0)  # Decay, minimum of 0.0
 
-    else:
-        # Decrease probability
-        return max(current_probability - 0.1, 0.0)  # Decrement, minimum of 0.0 
 
 
 def visualize_network(G):
