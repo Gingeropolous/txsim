@@ -163,10 +163,14 @@ def process_transaction(env, node, network, transaction):
              transaction.hops += 1  # Increment the hop count
              print(f"Node {node} forwarding {transaction.tx_hash} in stem phase (hop={transaction.hops})")
              neighbor = random.choice(list(network.neighbors(node)))
+             if need_to_repackage(transaction, network.nodes[node], neighbor):
+                 # ... (Repackaging logic: probability check, repackaging, probability update) ...
              env.process(process_transaction(env, neighbor, network, copy.deepcopy(transaction)))
          else:  # Fluff Phase
              #print(f"Node {node} forwarding {transaction.tx_hash} in fluff phase")
              for neighbor in network.neighbors(node):
+                 if need_to_repackage(transaction, network.nodes[node], neighbor_id):
+                      # ... (Repackaging logic: probability check, repackaging, probability update) ... 
                  env.process(process_transaction(env, neighbor, network, copy.deepcopy(transaction)))
 
 
@@ -212,6 +216,24 @@ def calculate_new_min_diff(current_min_diff):
   new_min_diff = current_min_diff * current_min_diff
 
   return new_min_diff
+
+
+
+def need_to_repackage(transaction, node_data, neighbor_id):
+    """Determines whether a transaction needs to be repackaged.
+
+    Args:
+        transaction: The transaction object.
+        node_data: The data associated with the processing node (from G.nodes[node]).
+        neighbor_id: The ID of the neighbor the transaction needs to be relayed to.
+
+    Returns:
+        bool: True if repackaging is needed, False otherwise.
+    """
+
+    neighbor_min_diff = node_data['neighbors'][neighbor_id]['txPoW_mindiff']  
+
+    return transaction.tx_pow < neighbor_min_diff 
 
 
 def visualize_network(G):
