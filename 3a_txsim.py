@@ -111,6 +111,11 @@ def generate_transaction(env, node, network):
   # ... (Transaction creation with stem phase flag) ...
 
 
+    # Propagation Logic - Basic
+        #for neighbor in network.neighbors(node):  # Broadcast to all neighbors
+         #   #print(f"Node {node} sending transaction to neighbor {neighbor}")
+          #  env.process(process_transaction(env, neighbor, network, copy.deepcopy(tx)))
+
     # Dandelion Stem Phase: Send to a single random neighbor
         neighbor = random.choice(list(network.neighbors(node)))
         env.process(process_transaction(env, neighbor, network, copy.deepcopy(tx)))
@@ -120,6 +125,11 @@ def process_transaction(env, node, network, transaction):
     delay = random.uniform(0.005, 0.02)  # Simulate processing and transmission time
     yield env.timeout(delay) 
     #print(f"Node {node} received transaction from originator {transaction.originator}")
+
+    # Track the transaction 
+#    if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
+#        network.nodes[node]['seen_transactions'].add(transaction.tx_hash)
+        #print(f"Node {node} received NEW transaction from originator {transaction.originator}")
 
     # Dandelion Propagation Logic 
     if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
@@ -137,6 +147,18 @@ def process_transaction(env, node, network, transaction):
                  env.process(process_transaction(env, neighbor, network, copy.deepcopy(transaction)))
 
 
+        # Relay the transaction to neighbors (Corrected)
+#        for neighbor in network.neighbors(node):
+#            env.process(process_transaction(env, neighbor, network, copy.deepcopy(transaction)))  # Pass the 'transaction' object 
+#    else:
+        #print(f"Node {node} received DUPLICATE transaction from originator {transaction.originator}")
+
+
+#def is_in_stem_phase(transaction, node, network):
+#    min_stem_hops = 4  # Minimum number of hops in stem phase
+#    max_stem_hops = 9  # Maximum number of hops in stem phase
+#    random_hops = random.randint(min_stem_hops, max_stem_hops) 
+#    return transaction.hops < random_hops
 
 def is_in_stem_phase(transaction, node, network):
     return transaction.hops < transaction.hop_limit  # Use the stored hop limit
