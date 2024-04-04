@@ -149,6 +149,8 @@ def process_transaction(env, node, network, transaction):
     # Repackaging Logic (if needed)
     if need_to_repackage(transaction, network.nodes[node], sender): 
         repackage_probability = network.nodes[node]['repackage_probabilities'].get(sender, 1.0) 
+        target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
+        repackage_transaction(transaction, target_difficulty) 
         if random.random() < repackage_probability: 
             repackage_transaction(transaction)  # You'll need to implement this
         network.nodes[node]['repackage_probabilities'][sender] = update_repackage_probability(repackage_probability)
@@ -235,6 +237,18 @@ def need_to_repackage(transaction, node_data, neighbor_id):
     neighbor_min_diff = node_data['neighbors'][neighbor_id]['txPoW_mindiff']  
 
     return transaction.tx_pow < neighbor_min_diff 
+
+
+def repackage_transaction(transaction, target_difficulty):
+    """Assigns a new simulated PoW value to the transaction.
+
+    Args:
+        transaction: The transaction object to be repackaged.
+        target_difficulty: The target difficulty to meet.
+    """
+
+    transaction.tx_pow = target_difficulty  # Directly assign the new PoW value
+
 
 
 def visualize_network(G):
