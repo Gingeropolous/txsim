@@ -130,10 +130,8 @@ def generate_transaction(env, node, network):
 
 def process_transaction(env, node, network, transaction):
     delay = random.uniform(0.005, 0.02)  # Simulate processing and transmission time
-#    print(f"Node Data for Node {node}: ", network.nodes[node])
     yield env.timeout(delay) 
-#    network.nodes[node]['repackage_probabilities'].setdefault(sender, {})  # Initialize  if needed
-    print(f"Node {node} received transaction from originator {transaction.originator}")
+    print(f"Node {node} received transaction {transaction.tx_hash} from originator {transaction.originator}")
 
     sender = transaction.originator  # Identify the neighbor
     print("Before check:", sender)  # Add this line
@@ -174,21 +172,12 @@ def process_transaction(env, node, network, transaction):
                 # Retrieve probability
                 repackage_probability = network.nodes[node]['repackage_probabilities'][sender]['probability']  
                 # Randomness check 
-                print("Value of repackage_probability:", repackage_probability)
-                print("Type of repackage_probability (before):", type(repackage_probability)) 
-                print("Value of repackage_probability:", repackage_probability)
-                print (f"repackage_probability at line 174, in stem phase: {repackage_probability}")
                 if random.random() < repackage_probability: 
                     target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
                     repackage_transaction(transaction, target_difficulty)  
+                    print(f"Node {node} repackaged and forwarding {transaction.tx_hash} in stem phase (hop={transaction.hops})")
 
                 # Update probability and timestamp (regardless of repackaging)
-
-                #network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now
-                #print("Type of repackage_probability (before):", type(repackage_probability)) 
-                #repackage_probability = update_repackage_probability(
-                #network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0))
-                #print("Type of repackage_probability (after):", type(repackage_probability))  
 
                 last_transaction_time = network.nodes[node]['repackage_probabilities'].get(sender, {}).get('last_transaction_time', 0.0)
                 repackage_probability = update_repackage_probability(last_transaction_time)
@@ -199,13 +188,13 @@ def process_transaction(env, node, network, transaction):
             # Update timestamp
 
 
-            # The following is for if the transaction doesn't need to be repackaged
+            # The following is for if the transacti
             network.nodes[node]['repackage_probabilities'].setdefault(neighbor_id, {})['last_transaction_time'] = env.now
 
             env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction))) 
 
         else:  # Fluff Phase
-            print(f"Node {node} forwarding {transaction.tx_hash} in fluff phase")
+            #print(f"Node {node} forwarding {transaction.tx_hash} in fluff phase")
             for neighbor_id in network.neighbors(node):  
                 if need_to_repackage(transaction, network.nodes[node], neighbor_id):
                     # ... (Repackaging logic: probability check, repackaging, probability update) ...
@@ -218,6 +207,7 @@ def process_transaction(env, node, network, transaction):
                     if random.random() < repackage_probability: 
                         target_difficulty = network.nodes[neighbor_id]['txPoW_mindiff'] # Get the neighbor's min_diff
                         repackage_transaction(transaction, target_difficulty)  
+                        print(f"Node {node} repackaged and forwarding {transaction.tx_hash} in fluff phase")
 
                     # Update probability and timestamp (regardless of repackaging)
                     #network.nodes[node]['repackage_probabilities'].setdefault(neighbor, {})['last_transaction_time'] = env.now
@@ -233,9 +223,10 @@ def process_transaction(env, node, network, transaction):
 
 
                 # Update timestamp for the current neighbor
-                    network.nodes[node]['repackage_probabilities'].setdefault(neighbor_id, {})['last_transaction_time'] = env.now
+                network.nodes[node]['repackage_probabilities'].setdefault(neighbor_id, {})['last_transaction_time'] = env.now
+                #print(f"Node {node} forwarding {transaction.tx_hash} in fluff phase")
 
-                    env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  
+                env.process(process_transaction(env, neighbor_id, network, copy.deepcopy(transaction)))  
 
 
 
@@ -354,7 +345,7 @@ env = simpy.Environment()
 # ... (Network generation code here) ...
 
 # Example: Generate a network of 100 nodes
-network = generate_mesh_network(1000)
+network = generate_mesh_network(2000)
 
 # Visualize the network (optional)
 #visualize_network(network)
@@ -364,8 +355,8 @@ env.process(generate_transaction(env, 0, network))
 
 # Example: Have multiple nodes generate transactions
 
-num_transactions_generated = 0  # Add this line before your simulation loop
-for node in range(400):  # Adjust the number of generating nodes
+num_transactions_generated = 0  # Add this line before your simulation loop. NOT A SETTABLE VARIABLE
+for node in range(1000):  # Adjust the number of generating nodes
     env.process(generate_transaction(env, node, network))
 
 # Run the simulation for some time
