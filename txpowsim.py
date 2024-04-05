@@ -125,16 +125,12 @@ def generate_transaction(env, node, network):
             tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=very_low_difficulty)
             tx.hop_limit = random_hops  # Add the hop limit to the Transaction object
 
+
         # You'll need to implement logic to actually create and send the transaction here
         # (considering PoW checks in the future)
         print(f"Node {node} trying to generate a transaction {tx} (user type: {user_type})")
         num_transactions_generated += 1  # Increment the counter after a transaction is generated
-  # ... (Transaction creation with stem phase flag) ...
-
-
-    # Dandelion Stem Phase: Send to a single random neighbor
-#        neighbor = random.choice(list(network.neighbors(node)))
- #       env.process(process_transaction(env, neighbor, network, copy.deepcopy(tx)))
+        env.process(process_transaction(env, node, network, copy.deepcopy(tx)))
 
 
 def process_transaction(env, node, network, transaction):
@@ -143,7 +139,7 @@ def process_transaction(env, node, network, transaction):
     print(f"Node {node} received transaction {transaction.tx_hash} from originator {transaction.originator}")
 
     if transaction.tx_hash in network.nodes[node]['seen_transactions']:
-        print(f"######################### Node {node} has already received transaction {transaction.tx_hash} from originator {transaction.originator}")
+        print(f"######################### Node {node} has already received transaction {transaction.tx_hash} from originator {transaction.originator}, sent by sender {transaction.sender}")
         return  # If transaction already seen, stop processing
 
     #sender = node  # Identify the neighbor
@@ -371,7 +367,7 @@ MAX_POW_DIFF = 100  # You can adjust this value as needed
 #visualize_network(network)
 
 # Example: Have node 0 generate transactions every so often
-env.process(generate_transaction(env, 0, network))
+#env.process(generate_transaction(env, 0, network))
 
 # Example: Have multiple nodes generate transactions
 
@@ -380,7 +376,7 @@ for node in range(1000):  # Adjust the number of generating nodes
     env.process(generate_transaction(env, node, network))
 
 # Run the simulation for some time
-env.run(until=100000000000000)
+env.run(until=1000000)
 
 
 
