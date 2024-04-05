@@ -10,13 +10,16 @@ import matplotlib.pyplot as plt
 
 
 class Transaction:
-    def __init__(self, originator, timestamp, tx_hash, tx_pow):
+    def __init__(self, originator, timestamp, tx_hash, tx_pow, target_difficulty=None, sender=None):
         self.originator = originator
         self.timestamp = timestamp
         self.tx_hash = tx_hash
         self.tx_pow = tx_pow  # Newly added field
         self.hops = 0  # Initialize hops to 0
         self.hop_limit = 0  # Initialize the hop limit
+        self.target_difficulty = target_difficulty  # New attribute
+        self.sender = sender
+
 
     def __str__(self): 
         return f"Transaction(originator={self.originator}, timestamp={self.timestamp}, txhash={self.tx_hash}, tx_pow={self.tx_pow})"
@@ -103,17 +106,23 @@ def generate_transaction(env, node, network):
             yield env.timeout(random.expovariate(1.0))  # Longer interval between transactions
             # Select any random neighbor for transaction creation
             neighbor = random.choice(list(network.neighbors(node)))
+            neighbor_mindiff = network.nodes[neighbor]['txPoW_mindiff']  # Retrieve neighbor's difficulty
+            if neighbor_mindiff > MAX_POW_DIFF:
+                print("DIFF TOO HIGH DURING CREATION")
+        # Handle exceeding maximum initial difficulty (e.g., transaction failure)
+                return None  # Or raise an exception, depending on your logic
+
             transaction_hash = hash(str(node) + str(env.now))  # Generate hash based on node and time
-            tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'])  # Valid PoW
+            tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=neighbor_mindiff)
             tx.hop_limit = random_hops  # Add the hop limit to the Transaction object
         else:  # Spammer behavior
             # Spammer behavior (adjust these parameters)
             yield env.timeout(random.expovariate(0.5))  # More frequent transactions
             # Select a random neighbor from the pre-defined list of spam_targets
             neighbor = random.choice(network.nodes[node]['spam_targets'])
-            very_low_difficulty=4
+            very_low_difficulty=5
             transaction_hash = hash(str(node) + str(env.now))  # Generate hash based on node and time
-            tx = Transaction(node, env.now, transaction_hash, very_low_difficulty)  # Invalid PoW (low difficulty)
+            tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=very_low_difficulty)
             tx.hop_limit = random_hops  # Add the hop limit to the Transaction object
 
         # You'll need to implement logic to actually create and send the transaction here
@@ -124,8 +133,8 @@ def generate_transaction(env, node, network):
 
 
     # Dandelion Stem Phase: Send to a single random neighbor
-        neighbor = random.choice(list(network.neighbors(node)))
-        env.process(process_transaction(env, neighbor, network, copy.deepcopy(tx)))
+#        neighbor = random.choice(list(network.neighbors(node)))
+ #       env.process(process_transaction(env, neighbor, network, copy.deepcopy(tx)))
 
 
 def process_transaction(env, node, network, transaction):
@@ -133,7 +142,14 @@ def process_transaction(env, node, network, transaction):
     yield env.timeout(delay) 
     print(f"Node {node} received transaction {transaction.tx_hash} from originator {transaction.originator}")
 
-    sender = transaction.originator  # Identify the neighbor
+    if transaction.tx_hash in network.nodes[node]['seen_transactions']:
+        print(f"######################### Node {node} has already received transaction {transaction.tx_hash} from originator {transaction.originator}")
+        return  # If transaction already seen, stop processing
+
+    #sender = node  # Identify the neighbor
+    transaction.sender = node  # Update the sender before forwarding
+    sender = transaction.sender #instead of modding the other calls
+
     print("Before check:", sender)  # Add this line
 
     network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now
@@ -289,6 +305,10 @@ def need_to_repackage(transaction, node_data, neighbor_id):
 
     neighbor_min_diff = node_data['neighbors'][neighbor_id]['txPoW_mindiff']  
 
+    if neighbor_min_diff > MAX_POW_DIFF:
+        print ("DIFF TOO HIGH IN REPACKAGE")
+        return False  # Rejection if mindiff is too high
+
     return transaction.tx_pow < neighbor_min_diff 
 
 
@@ -342,10 +362,10 @@ def visualize_network(G):
 # Create a SimPy environment
 env = simpy.Environment()
 
-# ... (Network generation code here) ...
-
 # Example: Generate a network of 100 nodes
 network = generate_mesh_network(2000)
+
+MAX_POW_DIFF = 100  # You can adjust this value as needed
 
 # Visualize the network (optional)
 #visualize_network(network)
