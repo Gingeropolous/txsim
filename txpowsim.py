@@ -8,10 +8,10 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import sys
 import json
-import threading  # Import the threading library
+#import threading  # Import the threading library
 
 
-sys.set_int_max_str_digits(0)  # Set to no limit (use with caution)
+#sys.set_int_max_str_digits(0)  # Set to no limit (use with caution)
 
 class Transaction:
     def __init__(self, originator, timestamp, tx_hash, tx_pow, target_difficulty=None, sender=None):
@@ -28,41 +28,43 @@ class Transaction:
     def __str__(self): 
         return f"Transaction(originator={self.originator}, timestamp={self.timestamp}, txhash={self.tx_hash}, tx_pow={self.tx_pow})"
 
-def create_blocks(G):  # Take the network graph as input
+def create_block(env, network_graph): 
+    selected_node = random.choice(list(network_graph.nodes()))  
+
+    # Transaction Selection (with dynamic limit)
+    transaction_limit = 100
+    if len(selected_node['seen_transactions']) > 200:
+        transaction_limit = 150
+    oldest_transactions = sorted(selected_node['seen_transactions'], key=lambda tx: tx['timestamp'])[:transaction_limit]
+
+    # Block Formation
+    block_id = generate_block_id()  
+    timestamp = env.now  # Use SimPy's time
+    block = {
+        'block_id': block_id,
+        'timestamp': timestamp,
+        'creating_node': selected_node,  
+        'transactions': oldest_transactions
+    }
+
+    # ... (Your print statements for announcement) ... 
+
+    # File Storage
+    with open('blockchain.txt', 'a') as f: 
+        f.write(json.dumps(block) + '\n')
+
+    # Transaction Clearing (Potential Synchronization Needed)
+    for tx in oldest_transactions:
+        for node_id in network_graph.nodes():  
+            node = network_graph.nodes[node_id]  
+            if tx in node['seen_transactions']:
+                node['seen_transactions'].remove(tx)
+
+def block_creation_process(env, network_graph):
     while True:
-        selected_node = random.choice(list(G.nodes()))  # Random node selection
+        yield env.timeout(120)  # Wait for 120 SimPy time units
+        create_block(env, network_graph)
 
-        # Transaction Selection (with dynamic limit)
-        transaction_limit = 100
-        if len(selected_node['seen_transactions']) > 200:
-            transaction_limit = 150
-        oldest_transactions = sorted(selected_node['seen_transactions'], key=lambda tx: tx['timestamp'])[:transaction_limit]
-
-        # Block Formation
-        block_id = generate_block_id() 
-        timestamp =  time.time()
-        block = {
-            'block_id': block_id,
-            'timestamp': timestamp,
-            'creating_node': selected_node,  # Store the node ID directly
-            'transactions': oldest_transactions
-        }
-
-        # File Storage
-        with open('blockchain.txt', 'a') as f: 
-            f.write(json.dumps(block) + '\n')
-
-        # Transaction Clearing
-        for tx in oldest_transactions:
-            for node_id in G.nodes():  # Iterate over node IDs
-                node = G.nodes[node_id]  # Get the node object
-                if tx in node['seen_transactions']:
-                    node['seen_transactions'].remove(tx)
-
-        time.sleep(120) 
-
-block_creation_thread = threading.Thread(target=create_blocks, args=(G,))
-block_creation_thread.start()
 
 def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio=0.1):
     """
@@ -176,20 +178,20 @@ def generate_transaction(env, node, network):
 def process_transaction(env, node, network, transaction):
     delay = random.uniform(0.005, 0.02)  # Simulate processing and transmission time
     yield env.timeout(delay) 
-    print(f"Node {node} received transaction {transaction.tx_hash} from originator {transaction.originator}")
+    print(f"Node {node} received transaction {transaction.tx_hash} from originator {transaction.originator} from sender {transaction.sender}")
 
     if transaction.tx_hash in network.nodes[node]['seen_transactions']:
-        print(f"######################### Node {node} has already received transaction {transaction.tx_hash} from originator {transaction.originator}, sent by sender {transaction.sender}")
+        #print(f"######################### Node {node} has already received transaction {transaction.tx_hash} from originator {transaction.originator}, sent by sender {transaction.sender}")
         return  # If transaction already seen, stop processing
 
     #sender = node  # Identify the neighbor
     transaction.sender = node  # Update the sender before forwarding
     sender = transaction.sender #instead of modding the other calls
 
-    print("Before check:", sender)  # Add this line
+    #print("Before check:", sender)  # Add this line
 
     network.nodes[node]['repackage_probabilities'].setdefault(sender, {})['last_transaction_time'] = env.now
-    print("After check:", sender)  # Add this line
+    #print("After check:", sender)  # Add this line
 
     # Timestamp Management
     current_time = env.now
@@ -401,6 +403,10 @@ env = simpy.Environment()
 # Example: Generate a network of 100 nodes
 network = generate_mesh_network(2000)
 
+#block_creation_thread = threading.Thread(target=create_blocks, args=(network,))
+#block_creation_thread.start()
+
+
 MAX_POW_DIFF = 100  # You can adjust this value as needed
 
 # Visualize the network (optional)
@@ -411,9 +417,13 @@ MAX_POW_DIFF = 100  # You can adjust this value as needed
 
 # Example: Have multiple nodes generate transactions
 
+env.process(block_creation_process(env, network))  # Pass your network graph
+
 num_transactions_generated = 0  # Add this line before your simulation loop. NOT A SETTABLE VARIABLE
 for node in range(1000):  # Adjust the number of generating nodes
     env.process(generate_transaction(env, node, network))
+
+
 
 # Run the simulation for some time
 env.run(until=100)
