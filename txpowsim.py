@@ -6,8 +6,12 @@ import time
 import copy
 import networkx as nx
 import matplotlib.pyplot as plt
+import sys
+import json
+import threading  # Import the threading library
 
 
+sys.set_int_max_str_digits(0)  # Set to no limit (use with caution)
 
 class Transaction:
     def __init__(self, originator, timestamp, tx_hash, tx_pow, target_difficulty=None, sender=None):
@@ -24,7 +28,41 @@ class Transaction:
     def __str__(self): 
         return f"Transaction(originator={self.originator}, timestamp={self.timestamp}, txhash={self.tx_hash}, tx_pow={self.tx_pow})"
 
+def create_blocks(G):  # Take the network graph as input
+    while True:
+        selected_node = random.choice(list(G.nodes()))  # Random node selection
 
+        # Transaction Selection (with dynamic limit)
+        transaction_limit = 100
+        if len(selected_node['seen_transactions']) > 200:
+            transaction_limit = 150
+        oldest_transactions = sorted(selected_node['seen_transactions'], key=lambda tx: tx['timestamp'])[:transaction_limit]
+
+        # Block Formation
+        block_id = generate_block_id() 
+        timestamp =  time.time()
+        block = {
+            'block_id': block_id,
+            'timestamp': timestamp,
+            'creating_node': selected_node,  # Store the node ID directly
+            'transactions': oldest_transactions
+        }
+
+        # File Storage
+        with open('blockchain.txt', 'a') as f: 
+            f.write(json.dumps(block) + '\n')
+
+        # Transaction Clearing
+        for tx in oldest_transactions:
+            for node_id in G.nodes():  # Iterate over node IDs
+                node = G.nodes[node_id]  # Get the node object
+                if tx in node['seen_transactions']:
+                    node['seen_transactions'].remove(tx)
+
+        time.sleep(120) 
+
+block_creation_thread = threading.Thread(target=create_blocks, args=(G,))
+block_creation_thread.start()
 
 def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio=0.1):
     """
@@ -113,7 +151,8 @@ def generate_transaction(env, node, network):
                 return None  # Or raise an exception, depending on your logic
 
             transaction_hash = hash(str(node) + str(env.now))  # Generate hash based on node and time
-            tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=neighbor_mindiff)
+            short_hash = str(transaction_hash)[:10] # Take the first 10 characters of the hash
+            tx = Transaction(node, env.now, short_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=neighbor_mindiff)
             tx.hop_limit = random_hops  # Add the hop limit to the Transaction object
         else:  # Spammer behavior
             # Spammer behavior (adjust these parameters)
@@ -122,7 +161,8 @@ def generate_transaction(env, node, network):
             neighbor = random.choice(network.nodes[node]['spam_targets'])
             very_low_difficulty=5
             transaction_hash = hash(str(node) + str(env.now))  # Generate hash based on node and time
-            tx = Transaction(node, env.now, transaction_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=very_low_difficulty)
+            short_hash = str(transaction_hash)[:10] # Take the first 10 characters of the hash
+            tx = Transaction(node, env.now, short_hash, network.nodes[node]['txPoW_mindiff'], target_difficulty=very_low_difficulty)
             tx.hop_limit = random_hops  # Add the hop limit to the Transaction object
 
 
@@ -376,7 +416,7 @@ for node in range(1000):  # Adjust the number of generating nodes
     env.process(generate_transaction(env, node, network))
 
 # Run the simulation for some time
-env.run(until=1000000)
+env.run(until=100)
 
 
 
