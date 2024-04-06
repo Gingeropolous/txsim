@@ -47,7 +47,15 @@ def create_block(env, network_graph):
         'transactions': oldest_transactions
     }
 
-    # ... (Your print statements for announcement) ... 
+    print("-------------------------------")
+    print("Block Created!")
+    print(f"Block ID: {block_id}")
+    print(f"Timestamp: {timestamp}")
+    print(f"Created by Node: {selected_node}")
+    print("Transactions:")
+    for tx in block['transactions']:
+        print(tx) # You might want to format the transaction output nicely
+    print("-------------------------------")
 
     # File Storage
     with open('blockchain.txt', 'a') as f: 
@@ -62,11 +70,13 @@ def create_block(env, network_graph):
 
 def block_creation_process(env, network_graph):
     while True:
-        yield env.timeout(120)  # Wait for 120 SimPy time units
+        yield env.timeout(10)  # Wait for 120 SimPy time units
         create_block(env, network_graph)
 
 
-def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio=0.1):
+
+#user_type_ratio 0 = no spammers
+def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio=0.0):
     """
     Generates a mesh network with the specified parameters.
 
@@ -131,7 +141,7 @@ def generate_mesh_network(num_nodes, min_peers=12, max_peers=24, user_type_ratio
 
     return G
 
-generation_probability = 0.9  # Example probability (adjust as needed)
+generation_probability = 0.3  # Example probability (adjust as needed)
 def generate_transaction(env, node, network):
     transaction = None  # Initialize before the conditionals
     global num_transactions_generated  # Declare the global variable
@@ -206,10 +216,13 @@ def process_transaction(env, node, network, transaction):
     ]
 
     # Difficulty Adjustment  
-    transaction_rate = calculate_transaction_rate(network.nodes[node]['transaction_timestamps'][sender]) 
-    if transaction_rate > 2:  # Threshold of 2 transactions per second 
-        new_min_diff = calculate_new_min_diff(network.nodes[node]['txPoW_mindiff'])  
-        network.nodes[node]['txPoW_mindiff'] = new_min_diff
+    transaction_rate = calculate_transaction_rate(network.nodes[node]['transaction_timestamps'][sender])
+    print(f"node {node} has transaction rate of {transaction_rate}") 
+    if transaction_rate > 10:  # Threshold of 2 transactions per second 
+        #new_min_diff = calculate_new_min_diff(network.nodes[node]['txPoW_mindiff'])
+        adjust_difficulty(node, transaction_rate, network)  # Call the difficulty adjustment function  
+        #network.nodes[node]['txPoW_mindiff'] = new_min_diff
+        print(f"Node {node} has new mindiff {network.nodes[node]['txPoW_mindiff']}")
 
     # Dandelion Propagation Logic 
     if transaction.tx_hash not in network.nodes[node]['seen_transactions']:
@@ -303,31 +316,31 @@ def calculate_transaction_rate(timestamps):
     """
 
     if len(timestamps) < 2:  # Need at least two timestamps for a meaningful rate
+        print("not enough timestamps")
         return 0.0
 
-    time_window = 1.0  # Consider transactions within the last 1 second
+    time_window = 40.0  # Consider transactions within the last 1 second
     cutoff_time = env.now - time_window
 
     recent_transactions = sum(timestamp >= cutoff_time for timestamp in timestamps)
     transaction_rate = recent_transactions / time_window 
-
     return transaction_rate 
 
-def calculate_new_min_diff(current_min_diff):
-  """Calculates a new minimum difficulty based on the current value.
+def adjust_difficulty(node, transaction_rate, network):  # Decrease argument no longer needed 
+    current_min_diff = network.nodes[node]['txPoW_mindiff']
 
-  Args:
-      current_min_diff: The current minimum difficulty requirement.
+    difficulty_step = 5  # You can adjust this for different step sizes
 
-  Returns:
-      float: The new minimum difficulty requirement.
-  """
+    # Increasing Difficulty
+    if transaction_rate > 2:
+        new_min_diff = current_min_diff + difficulty_step  
+        print(f"Node {node} has new mindiff {new_min_diff} (increased)")  
+    # Decreasing Difficulty 
+    elif transaction_rate < 0.5:  
+        new_min_diff = max(1, current_min_diff - difficulty_step)  # Ensure non-negative
+        print(f"Node {node} has new mindiff {new_min_diff} (decreased)")
 
-  # Increase the difficulty by squaring the current value
-  new_min_diff = current_min_diff * current_min_diff
-
-  return new_min_diff
-
+    network.nodes[node]['txPoW_mindiff'] = new_min_diff 
 
 def need_to_repackage(transaction, node_data, neighbor_id):
     """Determines whether a transaction needs to be repackaged.
@@ -420,7 +433,7 @@ MAX_POW_DIFF = 100  # You can adjust this value as needed
 env.process(block_creation_process(env, network))  # Pass your network graph
 
 num_transactions_generated = 0  # Add this line before your simulation loop. NOT A SETTABLE VARIABLE
-for node in range(1000):  # Adjust the number of generating nodes
+for node in range(2000):  # Adjust the number of generating nodes
     env.process(generate_transaction(env, node, network))
 
 
