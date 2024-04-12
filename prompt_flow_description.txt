@@ -1,0 +1,121 @@
+So here is a collection of prompts and responses that I've been using to get these stupid amnestic bots to code this for me. This current prompt is from my effort to make it multithreaded, but it includes stuff from the original effort.
+
+
+We're building a simulation of a mesh-topology P2P network with nodes communicating using a Dandelion++ transaction relay mechanism. 
+
+Key Objectives
+
+Mesh Network: Simulate a flat mesh network of 100-10000 nodes where nodes connect to a subset of other nodes.
+Dandelion++ Relay: Transactions are broadcast using the dandelion++ protocol. A transaction is also sent with a proof of work. The receiving node will only accept the transaction if there is enough PoW.
+
+The ultimate goal is to build a simulation script so that I can test whether incorporating a proof of work for transaction relay is capable of these things:
+
+1. Preventing spam attacks. Currently in the network, a malicious user can send 10s of thousands of transactions in very short time interval. Packing a transaction with a PoW ensures that a spammer will be limited due to computation resources. This will mitigate spam attacks.  
+2. Allowing users to still transact during spam attacks. A user without a lot of processing power must still be able to send a transaction during a spam attack. The ability of a node to re-package a transaction with a new PoW (in order to assist a transaction through the network) may allow average users to send transactions during a spam attack. This is what we are trying to figure out. 
+
+A node on the network should connect to a minimum of 12 peers and a maximum of 24 peers, and these variables should be modifiable. All nodes should connect to the network, and there should only be one network. 
+
+I do not know how to code python that well, so please provide the exact scripts that I can copy and paste into my terminal to build this simulation. Also provide comments in the code so I can learn.
+
+
+Here is the flow for a node receiving and relaying a transaction. 
+
+When a node A receives a transaction A from node B, the node checks that the tx contains a PoW that satisfies the difficulty requirements of node A. 
+
+After receiving this transaction, the node adjusts its min difficulty requirements for transactions from node B for some n seconds. 
+
+If no transaction is received in those n seconds from node B, node A gradually adjusts its min diff requirements for transactions from node B back to normal. 
+
+Node A will then try to send transaction A to node C. Node A has to check that the PoW of transaction A meets the mindiff of node C. 
+
+If it does, then node A relays transaction A to node C. 
+
+If it does not, then node A can repackage transaction A from node B so that the tx PoW of transaction A meets the mindiff of node C. 
+
+The repackage effort has a probability. The first time node A receives a transaction from node B, there is a high probability of repackaging. The more times node B sends more transactions to node A, the less probable it is that node A will repackage the tx from node B with a new PoW. 
+
+
+If node A receives another transaction B from node B within those n seconds and it does not meet the heightened diff requirement, node A does not relay the transaction.
+
+If node A receives another transaction B from node B within those n seconds and it does meet the heightened diff requirement, node A tries to relay transaction B to node C. 
+
+So there are a lot of moving parts:
+
+a. each node has its own difficulty requirements for each node it is connected to (the nodes neighbors)
+b. each node measures the rate of received transactions from its neighbors, and adjusts its mindiff for a neighbor based on how frequently it receives transactions from that neighbor
+c. a node can repackage a transaction that it is trying to relay if the nodes intended target for transaction relay have high mindiff. Repackaging attempts are also tracked for each of a nodes neighbors. 
+
+Can you see how this allows for a PoW that prevents spam attacks, but also allows for a user with little hash power to have their transaction make it through the network?  
+
+Difficulty Adjustment:
+
+For a given neighbor N, a node A will maintain its current mindiff for that node N if the node N sends up to y transactions per second. Once N sends more than y transactions per second, node A will increase its difficulty requirements for neighbor N using an exponential function, new_diff = old_diff ^ 2. Node A will maintain this new mindiff for node N for T seconds. If the transaction rate drops within T seconds, then node A will decrease the mindiff by new_diff = old_diff ^ 0.5.   
+
+For repackage probability: for a given neighbor N, a node A will repackage a tx from N with a new PoW if this is the first time (rp=1) that node A is repackaging a tx from N. This is a probability of 100. If node A receives another transaction (rp=rp+1) within 4 minutes from N that needs repackaging, node A will decrease the probability using new_probability = 100 - (rp)^2. It will eventually reach zero where node A will not attempt repackaging. 
+
+We are using multiprocessing to make things run faster and more logically. Each node in a cryptocurrency p2p network is an independent entity, so I think it makes sense to have each node run as its own process (or thread). 
+
+Here is a summary you generated from our last session together:
+
+    Multiprocessing-Centric Approach: We've shifted 7/away from SimPy, using multiprocessing to represent each node as a separate process for scalability and direct control of node logic.
+    Node Logic Outline: Nodes have internal loops for:
+        Probabilistic transaction generation
+        Receiving and processing unique transactions
+        Relaying transactions 
+        Creating blocks based on seen transactions
+    Communication: Nodes use multiprocessing queues for transactions and potentially block data.
+    Time Management: Nodes keep independent time. 
+
+
+Core Principles
+
+    Nodes as Processes:
+
+      We are parallelizing the simulation by using multiprocessing to represent each node as a separate process. 
+
+    Process-Based Node Logic:  Each node process has its own internal loop responsible for:
+        Transaction generation
+        Transaction processing and verification
+        Decision-making about relaying transactions
+        Updating its local min_diff
+        Managing a local seen_transactions list to avoid processing duplicates
+
+Communication Mechanisms
+
+    Communication Queues:  We use  multiprocessing.Queue objects to establish communication channels between processes. Nodes send transactions and min-diff updates to each other through their respective queues.
+
+    Message Types:  You might introduce message types to distinguish between transactions, min-diff requests, and min-diff responses within the queues for enhanced organization.
+
+    Min-Diff Sharing:
+        nodes update their neighbors with their mindiff requirements periodically. 
+        Each node maintains a data structure (like a dictionary) to store the most recent mindiff values it has learnt about other nodes.
+
+Flow example, for transaction in stem phase:
+
+	All nodes have a standard min_diff
+    Node A needs to send a transaction to Node B.
+    Node A checks its local data about mindiff requirements for node B. 
+    Node A creates/repackages a transaction using the local mindiff requirements for node B, if local mindiff requirements for node B is greater than standard min_diff. 
+    Node A sends the transaction to Node B via the designated communication queue.
+    Node B receives the transaction, verifies it against its own min-diff and seen_transactions list, and potentially relays it further.
+    	Node B also informs node A that the tx was relayed. If the tx was not relayed, node A has the option to repackage the tx and resend to node B. 
+
+
+Flow example, for transaction in fluff_phase:
+
+	All nodes have a standard min_diff
+    Node A needs to relay a transaction to Nodes B-M.
+    Node A checks its local data about mindiff requirements for nodes B-M.
+    	If median mindiff requirements for nodes B-M are greater than the transactions existing PoW
+    		Node A repackages the transaction with a PoW > the median mindiff of nodes B-M.
+    	Else
+    		Node A relays the transaction to the subset of nodes B-M with mindiff < (median mindiff of nodes B-M) 
+    
+    Nodes B-M receive the transaction, verify it against their own min-diff and seen_transactions list, and potentially relay it further.
+    	Nodes B-M also inform node A that the tx was relayed. If the tx was not relayed by at least half of the nodes, node A has the option to repackage the tx and resend to the nodes that didn't relay. 
+
+
+
+To speed things up, I would like to share the code we have been working on in my next submission. 
+
+Do you understand the goals of the simulation and are you ready for me to send the code?
